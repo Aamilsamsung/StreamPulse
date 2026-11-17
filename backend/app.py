@@ -188,9 +188,10 @@ def download_youtube_and_process(uid, video_id, topic=""):
             raise RuntimeError("YouTube importer is unavailable on this server")
         # The URL is reconstructed from a validated 11-character video ID.
         cmd = ["yt-dlp", "--no-playlist", "--no-config", "--no-cache-dir",
-               "--socket-timeout", "15", "--retries", "1", "--fragment-retries", "1",
+               "--js-runtimes", "node:/usr/local/bin/node", "--socket-timeout", "25", "--retries", "3", "--fragment-retries", "3",
                "--max-filesize", str(limit), "--match-filter", f"duration <= {duration_limit}",
-               "--format", "best[ext=mp4][height<=480]/best[height<=480][ext=mp4]",
+               "--format", "b[ext=mp4][height<=480]/bv*[height<=480]+ba/b[height<=480]/best",
+               "--merge-output-format", "mp4", "--remux-video", "mp4",
                "--output", str(path), "https://www.youtube.com/watch?v=" + video_id]
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 text=True, timeout=900)
@@ -200,8 +201,8 @@ def download_youtube_and_process(uid, video_id, topic=""):
             last = next((line for line in reversed(lines) if "ERROR:" in line or "does not pass filter" in line), lines[-1] if lines else "No downloader details")
             if "does not pass filter" in detail or "duration" in last.lower() and "filter" in last.lower():
                 raise ValueError(f"Video exceeds the {duration_limit // 60}-minute processing limit")
-            if "Sign in to confirm" in detail or "bot" in last.lower():
-                raise ValueError("YouTube blocked automated access from this server; try uploading an authorized video file instead")
+            if "Sign in to confirm" in detail or "bot" in last.lower() or "Failed to extract any player response" in detail:
+                raise ValueError("YouTube extraction blocked or changed; importer could not retrieve this video. Upload an authorized video file instead.")
             if "Requested format is not available" in detail:
                 raise ValueError("YouTube did not offer a compatible MP4 stream for this video")
             raise ValueError("YouTube importer: " + last[:180])
