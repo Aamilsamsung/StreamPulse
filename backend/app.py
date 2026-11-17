@@ -8,7 +8,7 @@ import threading
 import shutil
 import secrets
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 from urllib.error import HTTPError
 
@@ -162,6 +162,48 @@ class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         raise ValueError("Redirects are disabled for remote video URLs")
 
+def youtube_video_id(url):
+    p = urlparse(url)
+    if p.scheme != "https" or p.username or p.password or p.port not in (None, 443):
+        return None
+    host = (p.hostname or "").lower()
+    if host in ("youtu.be", "www.youtu.be"):
+        candidate = p.path.strip("/")
+    elif host in ("youtube.com", "www.youtube.com", "m.youtube.com") and p.path == "/watch":
+        candidate = parse_qs(p.query).get("v", [""])[0]
+    elif host in ("youtube.com", "www.youtube.com", "m.youtube.com") and p.path.startswith(("/shorts/", "/live/")):
+        candidate = p.path.split("/")[2]
+    else:
+        return None
+    return candidate if re.fullmatch(r"[A-Za-z0-9_-]{11}", candidate) else None
+
+def download_youtube_and_process(uid, video_id, topic=""):
+    folder = DATA / "uploads"
+    folder.mkdir(exist_ok=True)
+    path = folder / (uid + ".mp4")
+    limit = int(os.getenv("MAX_UPLOAD_MB", "100")) * 1024 * 1024
+    duration_limit = int(os.getenv("MAX_VIDEO_SECONDS", "600"))
+    try:
+        if not shutil.which("yt-dlp"):
+            raise RuntimeError("YouTube importer is unavailable on this server")
+        # The URL is reconstructed from a validated 11-character video ID.
+        cmd = ["yt-dlp", "--no-playlist", "--no-config", "--no-cache-dir",
+               "--socket-timeout", "15", "--retries", "1", "--fragment-retries", "1",
+               "--max-filesize", str(limit), "--match-filter", f"duration <= {duration_limit}",
+               "--format", "best[ext=mp4][height<=480]/best[height<=480][ext=mp4]",
+               "--output", str(path), "https://www.youtube.com/watch?v=" + video_id]
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, timeout=240)
+        if result.returncode != 0 or not path.exists():
+            raise ValueError("YouTube import failed. The video may be unavailable, too long, restricted, or blocked by YouTube.")
+        if path.stat().st_size > limit:
+            raise ValueError("YouTube video exceeds the server file limit")
+        process_upload(uid, path, topic)
+    except Exception as exc:
+        path.unlink(missing_ok=True)
+        with db() as c:
+            c.execute("UPDATE uploads SET status='failed',error=? WHERE id=?", (str(exc)[:250], uid))
+
 def allowed_video_url(url):
     p = urlparse(url)
     hosts = {x.strip().lower() for x in os.getenv("ALLOWED_VIDEO_HOSTS", "").split(",") if x.strip()}
@@ -175,7 +217,8 @@ def allowed_video_url(url):
 
 @app.post("/api/video-url")
 def submit_video_url(item: VideoURLInput, _: None = Depends(auth)):
-    suffix = allowed_video_url(item.url)
+    video_id = youtube_video_id(item.url)
+    suffix = '.mp4' if video_id else allowed_video_url(item.url)
     if item.topic.strip() and not (os.getenv('ENABLE_TRANSCRIPTION') == '1' and whisper_available()):
         raise HTTPException(503, 'Topic-based clipping requires ENABLE_TRANSCRIPTION=1 and faster-whisper installed on the server')
     with db() as c:
@@ -183,7 +226,10 @@ def submit_video_url(item: VideoURLInput, _: None = Depends(auth)):
             raise HTTPException(409, "Processing capacity reached")
         uid = uuid.uuid4().hex[:12]
         c.execute("INSERT INTO uploads VALUES(?,?,?,?,?)", (uid, urlparse(item.url).hostname[:120], "processing", time.time(), ""))
-    threading.Thread(target=download_and_process, args=(uid, item.url, suffix, item.topic.strip()), daemon=True).start()
+    if video_id:
+        threading.Thread(target=download_youtube_and_process, args=(uid, video_id, item.topic.strip()), daemon=True).start()
+    else:
+        threading.Thread(target=download_and_process, args=(uid, item.url, suffix, item.topic.strip()), daemon=True).start()
     return {"id": uid, "status": "processing"}
 
 def download_and_process(uid, url, suffix, topic=''):
