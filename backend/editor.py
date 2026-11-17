@@ -99,12 +99,14 @@ def transcribe_words(source, model_name="tiny"):
 
 def render(source, destination, preset="clean", subtitles=False, model_name="tiny"):
     """Render 9:16 MP4. Subtitle generation fails explicitly if unavailable."""
-    source, destination = Path(source), Path(destination)
+    source, destination = Path(source).resolve(), Path(destination).resolve()
     if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
         raise RuntimeError("ffmpeg and ffprobe are required")
     width, height = probe_size(source)
     vf = filter_for(preset, width, height)
     subtitle_path = None
+    if subtitles and preset == "blur":
+        raise ValueError("Blur preset with burned subtitles is not supported yet")
     if subtitles:
         words = transcribe_words(source, model_name)
         if not words:
