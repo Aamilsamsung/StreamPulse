@@ -7,6 +7,7 @@ import subprocess
 import threading
 import shutil
 import secrets
+import logging
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 from urllib.request import Request, build_opener, HTTPRedirectHandler
@@ -27,6 +28,7 @@ KEY = os.getenv("ADMIN_KEY", "")
 ALLOWED = {x.strip().lower() for x in os.getenv("ALLOWED_STREAM_HOSTS", "").split(",") if x.strip()}
 app = FastAPI(title="StreamPulse AI", version="0.2.0")
 stop_flags = {}
+logger = logging.getLogger('streampulse.import')
 
 def db():
     c = sqlite3.connect(DB, timeout=15)
@@ -202,7 +204,8 @@ def download_youtube_and_process(uid, video_id, topic=""):
         for attempt in attempts:
             path.unlink(missing_ok=True)
             result = subprocess.run(attempt, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                    text=True, timeout=900)
+                                    text=True, timeout=240)
+            logger.warning('YouTube import attempt result: %s', (result.stderr or '')[-1200:])
             if result.returncode == 0 and path.exists() and path.stat().st_size > 0:
                 break
             detail = (result.stderr or "") + (result.stdout or "")
