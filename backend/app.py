@@ -9,6 +9,8 @@ import shutil
 import secrets
 from pathlib import Path
 from urllib.parse import urlparse
+from urllib.request import Request, build_opener, HTTPRedirectHandler
+from urllib.error import HTTPError
 
 from fastapi import FastAPI, HTTPException, Header, Depends, UploadFile, File
 from fastapi.responses import FileResponse
@@ -145,6 +147,70 @@ def process_upload(uid, path):
         for sample in samples:
             sample.unlink(missing_ok=True)
         path.unlink(missing_ok=True)
+
+
+class VideoURLInput(BaseModel):
+    url: str = Field(min_length=12, max_length=2000)
+
+class NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise ValueError("Redirects are disabled for remote video URLs")
+
+def allowed_video_url(url):
+    p = urlparse(url)
+    hosts = {x.strip().lower() for x in os.getenv("ALLOWED_VIDEO_HOSTS", "").split(",") if x.strip()}
+    if p.scheme != "https" or not p.hostname or p.username or p.password or p.port not in (None, 443):
+        raise HTTPException(400, "Direct HTTPS video URL required")
+    if p.hostname.lower() not in hosts:
+        raise HTTPException(400, "Video host not allowlisted. Set ALLOWED_VIDEO_HOSTS in Render")
+    if not p.path.lower().endswith((".mp4", ".mov", ".mkv", ".webm")):
+        raise HTTPException(400, "Use a direct video file URL ending in MP4, MOV, MKV or WebM; page links are not supported yet")
+    return Path(p.path).suffix.lower()
+
+@app.post("/api/video-url")
+def submit_video_url(item: VideoURLInput, _: None = Depends(auth)):
+    suffix = allowed_video_url(item.url)
+    with db() as c:
+        if c.execute("SELECT count(*) FROM uploads WHERE status='processing'").fetchone()[0] >= 1:
+            raise HTTPException(409, "Processing capacity reached")
+        uid = uuid.uuid4().hex[:12]
+        c.execute("INSERT INTO uploads VALUES(?,?,?,?,?)", (uid, urlparse(item.url).hostname[:120], "processing", time.time(), ""))
+    threading.Thread(target=download_and_process, args=(uid, item.url, suffix), daemon=True).start()
+    return {"id": uid, "status": "processing"}
+
+def download_and_process(uid, url, suffix):
+    folder = DATA / "uploads"
+    folder.mkdir(exist_ok=True)
+    path = folder / (uid + suffix)
+    limit = int(os.getenv("MAX_UPLOAD_MB", "100")) * 1024 * 1024
+    try:
+        opener = build_opener(NoRedirect)
+        request = Request(url, headers={"User-Agent": "StreamPulse/0.2"})
+        with opener.open(request, timeout=25) as response:
+            if response.status != 200:
+                raise ValueError("Video server returned an unsuccessful status")
+            if int(response.headers.get("Content-Length", "0")) > limit:
+                raise ValueError("Video exceeds configured size limit")
+            length = 0
+            with path.open("wb") as output:
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    length += len(chunk)
+                    if length > limit:
+                        raise ValueError("Video exceeds configured size limit")
+                    output.write(chunk)
+        if length == 0:
+            raise ValueError("Remote video was empty")
+        probe = run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_type", "-of", "default=noprint_wrappers=1", str(path)], 20)
+        if probe.returncode != 0 or "video" not in probe.stdout:
+            raise ValueError("URL did not return a playable video")
+        process_upload(uid, path)
+    except Exception as exc:
+        path.unlink(missing_ok=True)
+        with db() as c:
+            c.execute("UPDATE uploads SET status='failed',error=? WHERE id=?", (str(exc)[:250], uid))
 
 @app.get("/api/streams")
 def streams(_: None = Depends(auth)):
