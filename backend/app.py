@@ -193,18 +193,33 @@ def download_youtube_and_process(uid, video_id, topic=""):
                "--format", "b[ext=mp4][height<=480]/bv*[height<=480]+ba/b[height<=480]/best",
                "--merge-output-format", "mp4", "--remux-video", "mp4",
                "--output", str(path), "https://www.youtube.com/watch?v=" + video_id]
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, timeout=900)
-        if result.returncode != 0 or not path.exists():
-            detail = (result.stderr or result.stdout or "").strip()
+        attempts = [
+            cmd,
+            cmd[:-1] + ["--extractor-args", "youtube:player_client=android,web", cmd[-1]],
+            cmd[:-1] + ["--extractor-args", "youtube:player_client=web_safari,web", cmd[-1]],
+        ]
+        result = None
+        for attempt in attempts:
+            path.unlink(missing_ok=True)
+            result = subprocess.run(attempt, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                    text=True, timeout=900)
+            if result.returncode == 0 and path.exists() and path.stat().st_size > 0:
+                break
+            detail = (result.stderr or "") + (result.stdout or "")
+            if "does not pass filter" in detail or "Sign in to confirm" in detail:
+                break
+        if result is None or result.returncode != 0 or not path.exists():
+            detail = ((result.stderr or "") + "\n" + (result.stdout or "")).strip() if result else ""
             lines = [line.strip() for line in detail.splitlines() if line.strip()]
             last = next((line for line in reversed(lines) if "ERROR:" in line or "does not pass filter" in line), lines[-1] if lines else "No downloader details")
-            if "does not pass filter" in detail or "duration" in last.lower() and "filter" in last.lower():
+            if "does not pass filter" in detail:
                 raise ValueError(f"Video exceeds the {duration_limit // 60}-minute processing limit")
-            if "Sign in to confirm" in detail or "bot" in last.lower() or "Failed to extract any player response" in detail:
-                raise ValueError("YouTube extraction blocked or changed; importer could not retrieve this video. Upload an authorized video file instead.")
+            if "Sign in to confirm" in detail or "bot" in last.lower():
+                raise ValueError("YouTube requires verification or blocks this server. Upload a video file you are authorized to edit.")
+            if "Failed to extract any player response" in detail:
+                raise ValueError("YouTube player extraction failed across multiple clients. This server cannot currently import the video; upload the file instead.")
             if "Requested format is not available" in detail:
-                raise ValueError("YouTube did not offer a compatible MP4 stream for this video")
+                raise ValueError("No compatible video format was offered by YouTube")
             raise ValueError("YouTube importer: " + last[:180])
         if path.stat().st_size > limit:
             raise ValueError("YouTube video exceeds the server file limit")
