@@ -27,9 +27,9 @@
 <header><div><span class="mark">SP.</span><strong>StreamPulse</strong> <small>AI highlight studio</small></div><span class="pill">LOCAL PROTOTYPE</span></header>
 <h1>Great moments.<br>Ready to clip.</h1>
 <p class="sub">Upload a video or monitor an authorized HLS livestream. Review the generated vertical highlight candidates before sharing them.</p>
-<div class="notice">This is a single-admin prototype, <strong>not a public SaaS</strong>. Highlights use simple audio/transcript heuristics. No subtitles or automatic social publishing yet.</div>
-<section><h2>Local administrator access</h2><label for="key">Admin key</label><input id="key" type="password" autocomplete="off" placeholder="ADMIN_KEY environment variable"><small>The key stays in this page's memory. Avoid shared computers.</small></section>
-<div class="grid">
+<div class="notice"><strong>Web preview only:</strong> Cloud video processing is not connected on Vercel. For working clips today, use the local Windows launcher in the GitHub repository. The web controls require a separately hosted secured backend.</div>
+<section id="localAccess"><h2>Local administrator access</h2><label for="key">Admin key</label><input id="key" type="password" autocomplete="off" placeholder="ADMIN_KEY environment variable"><small>The key stays in this page's memory. Avoid shared computers.</small></section>
+<p id="hostNotice" class="notice" hidden>Cloud processing is not enabled on this deployment. <a href="https://github.com/Aamilsamsung/StreamPulse" style="color:#a1ec78">Get the working local clipper on GitHub</a>. Upload and livestream buttons are disabled here to avoid implying your video was processed.</p><div class="grid">
 <section><h2>Upload a video</h2><p class="muted">MP4, MOV, MKV or WebM. One processing job at a time, 150 MB default limit.</p>
 <label for="file">Video file</label><input id="file" type="file" accept=".mp4,.mov,.mkv,.webm,video/*"><button id="upload">Generate highlight candidates</button></section>
 <section><h2>Monitor a livestream</h2><p class="muted">Only an authorized HTTPS HLS .m3u8 URL from a server-side allowlisted host.</p>
@@ -42,6 +42,7 @@
 </main>
 <script>
 const $=id=>document.getElementById(id);
+if(location.hostname.endsWith('.vercel.app')){ $('hostNotice').hidden=false; $('localAccess').hidden=true; ['upload','watch','refresh'].forEach(id=>$(id).disabled=true); }
 const base='/api';
 function headers(){return {'X-Admin-Key':$('key').value}}
 function elt(tag,txt){const n=document.createElement(tag);if(txt!==undefined)n.textContent=String(txt);return n}
