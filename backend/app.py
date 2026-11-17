@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from backend.highlights import rank_candidate, choose_nonoverlapping
+from backend.editor import render, PRESETS
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
@@ -224,9 +225,14 @@ def score_segment(path):
     return score, reason, transcript
 
 def export_clip(src, dest):
-    vf = "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1"
-    r = run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", str(src), "-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", "27", "-c:a", "aac", "-movflags", "+faststart", str(dest)], 120)
-    return r.returncode == 0 and dest.exists()
+    preset = os.getenv("EDIT_PRESET", "clean").lower()
+    if preset not in PRESETS:
+        raise ValueError("EDIT_PRESET must be clean, dynamic or blur")
+    # Explicit opt-in: captions need faster-whisper and an FFmpeg build with libass.
+    captions = os.getenv("BURN_SUBTITLES", "0") == "1"
+    render(src, dest, preset=preset, subtitles=captions,
+           model_name=os.getenv("WHISPER_MODEL", "tiny"))
+    return True
 
 def worker(sid, url, event):
     folder = DATA / "segments" / sid
