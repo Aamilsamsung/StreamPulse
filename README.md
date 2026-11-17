@@ -163,3 +163,40 @@ python -m unittest discover -s tests -p 'test_video_integration.py' -v
 ```
 
 The CI workflow must report success before treating the tested preset exports as verified. The synthetic clip contains no third-party copyrighted footage.
+
+## Clip a video today — fastest route (Windows)
+
+The repository includes a **local clipper CLI** and `clip-now.bat`. This path does **not** require starting the FastAPI dashboard, creating an admin key, connecting a social account, or deploying a server.
+
+1. Install [Python 3.10+](https://www.python.org/downloads/) and [FFmpeg](https://ffmpeg.org/download.html). Make sure `ffmpeg` and `ffprobe` work in a new terminal. On Windows, `winget install Gyan.FFmpeg` is one possible installation method.
+2. Download/clone this repository. Double-click `clip-now.bat` with a video file dragged onto it. It will set up a local Python environment if needed, generate up to three candidate clips, and open the `output_clips` folder.
+3. For manual control, run:
+
+```powershell
+python -m pip install -r requirements.txt
+python -m backend.cli "C:\\Videos\\my-video.mp4" --clips 3 --preset dynamic --output output_clips
+```
+
+Optional AI speech ranking and word-timed captions:
+
+```powershell
+python -m pip install faster-whisper
+python -m backend.cli "C:\\Videos\\my-video.mp4" --clips 3 --preset clean --transcribe --subtitles
+```
+
+The first transcription run may download the Whisper model. Your FFmpeg build must support the `ass` subtitle filter. `--preset clean` is recommended with captions. The `blur` preset and captions cannot be combined yet.
+
+### What this local clipper really does
+
+- Analyzes fixed windows (30 seconds by default) for audio loudness and optionally speech keywords.
+- Ranks candidates and avoids picking near-duplicate moments.
+- Produces up to three 1080×1920 MP4 exports and a `highlights.json` manifest.
+- Offers fixed framing presets and optional word-timed captions.
+
+It is **not yet a semantic AI video editor**: there is no game-event recognition, scene-level context analysis, subject tracking, timeline editor, automatic publishing, or guaranteed viral-score prediction. Loud audio can be mistaken for an important moment. Review clips before sharing.
+
+### CLI options
+
+`--clips 3`, `--window 30`, `--preset clean|dynamic|blur`, `--transcribe`, `--subtitles`, `--model tiny`, `--max-minutes 60`, `--output folder`.
+
+The local CLI is designed for videos you own or are authorized to process. It does not download restricted social-media URLs. The CI integration test creates a synthetic input and verifies that the CLI exports a clip and JSON manifest.
