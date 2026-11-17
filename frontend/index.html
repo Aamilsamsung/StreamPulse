@@ -30,6 +30,7 @@
 <div class="notice"><strong>Web preview only:</strong> Cloud video processing is not connected on Vercel. For working clips today, use the local Windows launcher in the GitHub repository. The web controls require a separately hosted secured backend.</div>
 <section id="localAccess"><h2>Local administrator access</h2><label for="key">Admin key</label><input id="key" type="password" autocomplete="off" placeholder="ADMIN_KEY environment variable"><small>The key stays in this page's memory. Avoid shared computers.</small></section>
 <p id="hostNotice" class="notice" hidden>Cloud processing is not enabled on this deployment. <a href="https://github.com/Aamilsamsung/StreamPulse" style="color:#a1ec78">Get the working local clipper on GitHub</a>. Upload and livestream buttons are disabled here to avoid implying your video was processed.</p><div class="grid">
+<section><h2>Paste a video URL</h2><p class="muted">Direct HTTPS MP4/MOV/MKV/WebM file links from approved hosts. YouTube/Instagram page links are not yet supported.</p><label for="videoUrl">Video file URL</label><input id="videoUrl" type="url" placeholder="https://approved-host.example/video.mp4"><button id="videoUrlBtn">Clip from URL</button></section>
 <section><h2>Upload a video</h2><p class="muted">MP4, MOV, MKV or WebM. One processing job at a time, 150 MB default limit.</p>
 <label for="file">Video file</label><input id="file" type="file" accept=".mp4,.mov,.mkv,.webm,video/*"><button id="upload">Generate highlight candidates</button></section>
 <section><h2>Monitor a livestream</h2><p class="muted">Only an authorized HTTPS HLS .m3u8 URL from a server-side allowlisted host.</p>
@@ -42,13 +43,14 @@
 </main>
 <script>
 const $=id=>document.getElementById(id);
-if(location.hostname.endsWith('.vercel.app')){ $('hostNotice').hidden=false; $('localAccess').hidden=true; ['upload','watch','refresh'].forEach(id=>$(id).disabled=true); }
+if(location.hostname.endsWith('.vercel.app')){ $('hostNotice').hidden=false; $('localAccess').hidden=true; ['videoUrlBtn','upload','watch','refresh'].forEach(id=>$(id).disabled=true); }
 const base='/api';
 function headers(){return {'X-Admin-Key':$('key').value}}
 function elt(tag,txt){const n=document.createElement(tag);if(txt!==undefined)n.textContent=String(txt);return n}
 function msg(s){$('msg').textContent=s}
 async function request(path,opts={}){const res=await fetch(base+path,{...opts,headers:{...headers(),...(opts.headers||{})}});if(!res.ok){let t=await res.text();throw Error(res.status+' '+t.slice(0,200))}return res}
 async function upload(){const f=$('file').files[0];if(!f){msg('Choose a video first');return}const form=new FormData();form.append('file',f);try{let r=await request('/uploads',{method:'POST',body:form});msg('Upload queued: '+JSON.stringify(await r.json()));refresh()}catch(e){msg(e.message)}}
+async function clipURL(){try{let r=await request('/video-url',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:$('videoUrl').value})});msg('Video URL queued: '+JSON.stringify(await r.json()));refresh()}catch(e){msg(e.message)}}
 async function watch(){try{let r=await request('/streams',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('name').value,url:$('url').value})});msg('Monitoring started: '+JSON.stringify(await r.json()));refresh()}catch(e){msg(e.message)}}
 async function stopStream(id){try{await request('/streams/'+encodeURIComponent(id)+'/stop',{method:'POST'});msg('Stop requested');refresh()}catch(e){msg(e.message)}}
 async function approveClip(id){try{await request('/clips/'+encodeURIComponent(id)+'/approve',{method:'POST'});msg('Marked approved. Automatic publishing is not implemented.');refresh()}catch(e){msg(e.message)}}
@@ -63,5 +65,5 @@ async function refresh(){
  msg('Last refreshed: '+new Date().toLocaleTimeString());
  }catch(e){msg('Unable to load jobs: '+e.message)}
 }
-$('upload').onclick=upload;$('watch').onclick=watch;$('refresh').onclick=refresh;
+$('videoUrlBtn').onclick=clipURL;$('upload').onclick=upload;$('watch').onclick=watch;$('refresh').onclick=refresh;
 </script></body></html>
