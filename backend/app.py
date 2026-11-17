@@ -81,7 +81,7 @@ async def upload_video(file: UploadFile = File(...), topic: str = Form(default='
     topic = topic.strip()
     if topic and not (os.getenv('ENABLE_TRANSCRIPTION') == '1' and whisper_available()):
         raise HTTPException(503, 'Topic-based clipping requires ENABLE_TRANSCRIPTION=1 and faster-whisper installed on the server')
-    max_bytes = int(os.getenv("MAX_UPLOAD_MB", "150")) * 1024 * 1024
+    max_bytes = int(os.getenv("MAX_UPLOAD_MB", "500")) * 1024 * 1024
     if not file.filename or Path(file.filename).suffix.lower() not in (".mp4", ".mov", ".mkv", ".webm"):
         raise HTTPException(400, "Supported formats: MP4, MOV, MKV, WebM")
     with db() as c:
@@ -118,7 +118,7 @@ def process_upload(uid, path, topic=''):
     try:
         result = run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path)], 20)
         duration = float(result.stdout.strip())
-        if duration <= 0 or duration > int(os.getenv("MAX_VIDEO_SECONDS", "1200")):
+        if duration <= 0 or duration > int(os.getenv("MAX_VIDEO_SECONDS", "3600")):
             raise ValueError("Video duration exceeds beta limit")
         folder = DATA / "clips"
         folder.mkdir(exist_ok=True)
@@ -181,8 +181,8 @@ def download_youtube_and_process(uid, video_id, topic=""):
     folder = DATA / "uploads"
     folder.mkdir(exist_ok=True)
     path = folder / (uid + ".mp4")
-    limit = int(os.getenv("MAX_UPLOAD_MB", "100")) * 1024 * 1024
-    duration_limit = int(os.getenv("MAX_VIDEO_SECONDS", "600"))
+    limit = int(os.getenv("MAX_UPLOAD_MB", "500")) * 1024 * 1024
+    duration_limit = int(os.getenv("MAX_VIDEO_SECONDS", "3600"))
     try:
         if not shutil.which("yt-dlp"):
             raise RuntimeError("YouTube importer is unavailable on this server")
@@ -193,7 +193,7 @@ def download_youtube_and_process(uid, video_id, topic=""):
                "--format", "best[ext=mp4][height<=480]/best[height<=480][ext=mp4]",
                "--output", str(path), "https://www.youtube.com/watch?v=" + video_id]
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, timeout=240)
+                                text=True, timeout=900)
         if result.returncode != 0 or not path.exists():
             detail = (result.stderr or result.stdout or "").strip()
             lines = [line.strip() for line in detail.splitlines() if line.strip()]
