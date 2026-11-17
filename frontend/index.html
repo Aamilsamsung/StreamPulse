@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>StreamPulse | Highlight Studio</title>
+  <style>
+    :root{font:15px/1.6 Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;color:#f4f4f3;background:#0b0d0d}
+    *{box-sizing:border-box}body{margin:0}main{max-width:1200px;margin:0 auto;padding:38px 24px 80px}
+    header{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #27302c;padding-bottom:22px}
+    .mark{display:inline-block;background:#a1ec78;color:#091207;padding:4px 11px;border-radius:9px;font-weight:900;margin-right:10px}
+    h1{font-size:clamp(31px,5vw,62px);line-height:1.1;letter-spacing:-.055em;max-width:800px;margin:54px 0 14px}h2{font-size:19px;letter-spacing:-.03em;margin:0 0 15px}
+    .sub,.muted{color:#9ba7a0}.sub{max-width:620px;margin-bottom:34px}section{border:1px solid #29322d;border-radius:17px;background:#121615;padding:24px;margin-bottom:18px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.headrow{display:flex;justify-content:space-between;align-items:center;gap:12px}
+    label{display:block;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:#b8c2ba;margin:12px 0 6px}
+    input{width:100%;color:white;background:#0d1110;border:1px solid #364139;padding:12px 14px;border-radius:9px;font:inherit}input:focus{outline:2px solid #a1ec78;outline-offset:1px}
+    button{border:0;background:#a1ec78;color:#0a160b;font:inherit;font-weight:750;border-radius:9px;padding:11px 16px;cursor:pointer;margin-top:12px}
+    button:hover{filter:brightness(1.1)}button.secondary{background:#27352a;color:#dbfbd3}
+    .item{border-top:1px solid #2b332f;padding:12px 0}.pill{display:inline-block;border:1px solid #3d5143;padding:2px 8px;border-radius:20px;color:#a1ec78;font-size:12px}
+    small{color:#98a69b}video{width:100%;max-height:360px;background:#080908;border-radius:10px;margin:10px 0}
+    .notice{background:#222018;border:1px solid #534933;color:#eee2bc;padding:14px 16px;border-radius:12px;margin:22px 0}
+    @media(max-width:760px){main{padding:22px 14px}.grid{grid-template-columns:1fr}section{padding:17px}header{align-items:start;flex-direction:column}}
+  </style>
+</head>
+<body><main>
+<header><div><span class="mark">SP.</span><strong>StreamPulse</strong> <small>AI highlight studio</small></div><span class="pill">LOCAL PROTOTYPE</span></header>
+<h1>Great moments.<br>Ready to clip.</h1>
+<p class="sub">Upload a video or monitor an authorized HLS livestream. Review the generated vertical highlight candidates before sharing them.</p>
+<div class="notice">This is a single-admin prototype, <strong>not a public SaaS</strong>. Highlights use simple audio/transcript heuristics. No subtitles or automatic social publishing yet.</div>
+<section><h2>Local administrator access</h2><label for="key">Admin key</label><input id="key" type="password" autocomplete="off" placeholder="ADMIN_KEY environment variable"><small>The key stays in this page's memory. Avoid shared computers.</small></section>
+<div class="grid">
+<section><h2>Upload a video</h2><p class="muted">MP4, MOV, MKV or WebM. One processing job at a time, 150 MB default limit.</p>
+<label for="file">Video file</label><input id="file" type="file" accept=".mp4,.mov,.mkv,.webm,video/*"><button id="upload">Generate highlight candidates</button></section>
+<section><h2>Monitor a livestream</h2><p class="muted">Only an authorized HTTPS HLS .m3u8 URL from a server-side allowlisted host.</p>
+<label for="name">Stream name</label><input id="name" placeholder="My stream"><label for="url">HLS URL</label><input id="url" placeholder="https://trusted-host.example/live.m3u8"><button id="watch">Start monitoring</button></section>
+</div>
+<section><div class="headrow"><h2>Processing jobs</h2><button class="secondary" id="refresh">Refresh</button></div><div id="jobs" class="muted">No jobs loaded.</div></section>
+<section><h2>Monitored livestreams</h2><div id="streams" class="muted">No streams loaded.</div></section>
+<section><h2>Clips for review</h2><div id="clips" class="muted">No clips loaded.</div></section>
+<p id="msg" role="status" aria-live="polite" class="muted"></p>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const base='/api';
+function headers(){return {'X-Admin-Key':$('key').value}}
+function elt(tag,txt){const n=document.createElement(tag);if(txt!==undefined)n.textContent=String(txt);return n}
+function msg(s){$('msg').textContent=s}
+async function request(path,opts={}){const res=await fetch(base+path,{...opts,headers:{...headers(),...(opts.headers||{})}});if(!res.ok){let t=await res.text();throw Error(res.status+' '+t.slice(0,200))}return res}
+async function upload(){const f=$('file').files[0];if(!f){msg('Choose a video first');return}const form=new FormData();form.append('file',f);try{let r=await request('/uploads',{method:'POST',body:form});msg('Upload queued: '+JSON.stringify(await r.json()));refresh()}catch(e){msg(e.message)}}
+async function watch(){try{let r=await request('/streams',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('name').value,url:$('url').value})});msg('Monitoring started: '+JSON.stringify(await r.json()));refresh()}catch(e){msg(e.message)}}
+async function stopStream(id){try{await request('/streams/'+encodeURIComponent(id)+'/stop',{method:'POST'});msg('Stop requested');refresh()}catch(e){msg(e.message)}}
+async function approveClip(id){try{await request('/clips/'+encodeURIComponent(id)+'/approve',{method:'POST'});msg('Marked approved. Automatic publishing is not implemented.');refresh()}catch(e){msg(e.message)}}
+async function downloadClip(id){try{let r=await request('/clips/'+encodeURIComponent(id)+'/video');let blob=await r.blob();let u=URL.createObjectURL(blob);let a=document.createElement('a');a.href=u;a.download=id+'.mp4';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),10000)}catch(e){msg(e.message)}}
+async function refresh(){
+ try{
+ const results=await Promise.all(['/uploads','/streams','/clips'].map(p=>request(p).then(r=>r.json())));
+ const [uploads,streams,clips]=results;
+ $('jobs').replaceChildren(...(uploads.length?uploads.map(x=>{let d=elt('div');d.className='item';d.append(elt('strong',x.name),elt('div',x.status+(x.error?' — '+x.error:'')));return d}):[elt('p','No uploads yet.')]));
+ $('streams').replaceChildren(...(streams.length?streams.map(x=>{let d=elt('div');d.className='item';d.append(elt('strong',x.name),elt('div',x.status));if(x.status==='running'){let b=elt('button','Stop');b.onclick=()=>stopStream(x.id);d.append(b)}return d}):[elt('p','No streams yet.')]));
+ $('clips').replaceChildren(...(clips.length?clips.map(x=>{let d=elt('div');d.className='item';d.append(elt('strong','Clip '+x.id),elt('p','Score '+x.score+'/100 · '+x.status+' · '+x.reason));if(x.transcript)d.append(elt('p',x.transcript));let b=elt('button','Download MP4');b.onclick=()=>downloadClip(x.id);d.append(b);let a=elt('button','Approve');a.className='secondary';a.onclick=()=>approveClip(x.id);d.append(a);return d}):[elt('p','No candidate clips yet.')]));
+ msg('Last refreshed: '+new Date().toLocaleTimeString());
+ }catch(e){msg('Unable to load jobs: '+e.message)}
+}
+$('upload').onclick=upload;$('watch').onclick=watch;$('refresh').onclick=refresh;
+</script></body></html>
