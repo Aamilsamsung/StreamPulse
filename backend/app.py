@@ -195,7 +195,16 @@ def download_youtube_and_process(uid, video_id, topic=""):
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 text=True, timeout=240)
         if result.returncode != 0 or not path.exists():
-            raise ValueError("YouTube import failed. The video may be unavailable, too long, restricted, or blocked by YouTube.")
+            detail = (result.stderr or result.stdout or "").strip()
+            lines = [line.strip() for line in detail.splitlines() if line.strip()]
+            last = next((line for line in reversed(lines) if "ERROR:" in line or "does not pass filter" in line), lines[-1] if lines else "No downloader details")
+            if "does not pass filter" in detail or "duration" in last.lower() and "filter" in last.lower():
+                raise ValueError(f"Video exceeds the {duration_limit // 60}-minute processing limit")
+            if "Sign in to confirm" in detail or "bot" in last.lower():
+                raise ValueError("YouTube blocked automated access from this server; try uploading an authorized video file instead")
+            if "Requested format is not available" in detail:
+                raise ValueError("YouTube did not offer a compatible MP4 stream for this video")
+            raise ValueError("YouTube importer: " + last[:180])
         if path.stat().st_size > limit:
             raise ValueError("YouTube video exceeds the server file limit")
         process_upload(uid, path, topic)
