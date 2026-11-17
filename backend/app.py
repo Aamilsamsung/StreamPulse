@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException, Header, Depends, UploadFile, File
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from backend.highlights import rank_candidate, choose_nonoverlapping
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
@@ -125,7 +126,7 @@ def process_upload(uid, path):
                 samples.append(sample)
                 score, reason, transcript = score_segment(sample)
                 windows.append((score, start, sample, reason, transcript))
-        selected = sorted(windows, key=lambda x: x[0], reverse=True)[:int(os.getenv("MAX_CLIPS_PER_UPLOAD", "3"))]
+        selected = choose_nonoverlapping(windows, int(os.getenv("MAX_CLIPS_PER_UPLOAD", "3")), 25)
         for score, start, sample, reason, transcript in selected:
             if score < int(os.getenv("UPLOAD_HIGHLIGHT_THRESHOLD", "20")):
                 continue
@@ -219,10 +220,7 @@ def score_segment(path):
     except Exception:
         loud = -90
     transcript = transcribe(path)
-    keywords = ["no way", "oh my god", "insane", "unbelievable", "clutch", "wow", "amazing", "laugh", "crazy", "important", "the point is", "here is why", "listen", "what happened"]
-    hits = [k for k in keywords if k in transcript.lower()]
-    score = min(100, max(0, round((loud + 45) * 1.35 + len(hits) * 18)))
-    reason = ("Speech cues: " + ", ".join(hits)) if hits else ("Audio intensity" if loud > -18 else "Low activity")
+    score, reason = rank_candidate(loud, transcript)
     return score, reason, transcript
 
 def export_clip(src, dest):
