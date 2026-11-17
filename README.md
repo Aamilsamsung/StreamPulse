@@ -143,3 +143,11 @@ Issues and pull requests are welcome for bug fixes, testing, documentation and i
 ## Project status
 
 **Prototype / work in progress.** This README deliberately distinguishes implemented functionality from future plans.
+
+## Editing engine (experimental)
+
+The clip exporter now supports `EDIT_PRESET=clean` (letterbox), `EDIT_PRESET=dynamic` (center-crop landscape video), and `EDIT_PRESET=blur` (blurred background). These are **fixed layouts, not AI subject tracking**. Audio loudness normalization is applied on export.
+
+Set `BURN_SUBTITLES=1` to opt into word-timed captions. Install `faster-whisper`, use an FFmpeg build with the `ass` filter/libass, and allow the Whisper model to download. **This feature has not yet been verified with a real video in CI**. The `blur` preset cannot currently be combined with burned subtitles. Subtitle generation fails explicitly when speech or dependencies are unavailable.
+
+`backend/highlights.py` contains an explainable audio/transcript scoring function and candidate overlap reduction. These are heuristics, not a trained AI ranking model.
