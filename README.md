@@ -200,3 +200,11 @@ It is **not yet a semantic AI video editor**: there is no game-event recognition
 `--clips 3`, `--window 30`, `--preset clean|dynamic|blur`, `--transcribe`, `--subtitles`, `--model tiny`, `--max-minutes 60`, `--output folder`.
 
 The local CLI is designed for videos you own or are authorized to process. It does not download restricted social-media URLs. The CI integration test creates a synthetic input and verifies that the CLI exports a clip and JSON manifest.
+
+## Render video URLs and HLS streams
+
+The dashboard now includes a **Paste a video URL** form. It accepts direct HTTPS links to video files (MP4/MOV/MKV/WebM), **not** YouTube/Instagram/Twitch watch-page URLs. For security, the server owner must set `ALLOWED_VIDEO_HOSTS` to a comma-separated list of trusted direct-video hostnames in Render's environment settings. The server enforces the allowlist, rejects redirects, limits download size, and probes the downloaded file before processing. The link must point to a video you own or are authorized to use.
+
+HLS monitoring is a separate feature: configure `ALLOWED_STREAM_HOSTS` to the exact trusted hostname of an HTTPS `.m3u8` stream. This is not a YouTube/Twitch watch-page URL. The existing HLS pipeline has not been tested against a real live stream on Render.
+
+**Render deployment security:** The current UI requires a server-side `ADMIN_KEY` for all processing and clip download operations. This is single-admin access, not public user authentication. Keep the key private and do not open the service to shared/public users. Render free instances have ephemeral disk and limited compute. For a production creator platform, add proper account authentication, private persistent object storage, durable queues and abuse protection.
