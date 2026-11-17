@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 from urllib.error import HTTPError
 
-from fastapi import FastAPI, HTTPException, Header, Depends, UploadFile, File
+from fastapi import FastAPI, HTTPException, Header, Depends, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -77,7 +77,10 @@ def uploads(_: None = Depends(auth)):
         return [dict(r) for r in c.execute("SELECT * FROM uploads ORDER BY created DESC LIMIT 100")]
 
 @app.post("/api/uploads")
-async def upload_video(file: UploadFile = File(...), _: None = Depends(auth)):
+async def upload_video(file: UploadFile = File(...), topic: str = Form(default='', max_length=160), _: None = Depends(auth)):
+    topic = topic.strip()
+    if topic and not (os.getenv('ENABLE_TRANSCRIPTION') == '1' and whisper_available()):
+        raise HTTPException(503, 'Topic-based clipping requires ENABLE_TRANSCRIPTION=1 and faster-whisper installed on the server')
     max_bytes = int(os.getenv("MAX_UPLOAD_MB", "150")) * 1024 * 1024
     if not file.filename or Path(file.filename).suffix.lower() not in (".mp4", ".mov", ".mkv", ".webm"):
         raise HTTPException(400, "Supported formats: MP4, MOV, MKV, WebM")
@@ -107,10 +110,10 @@ async def upload_video(file: UploadFile = File(...), _: None = Depends(auth)):
         with db() as c:
             c.execute("UPDATE uploads SET status='failed',error=? WHERE id=?", (str(exc)[:250], uid))
         raise
-    threading.Thread(target=process_upload, args=(uid, path), daemon=True).start()
+    threading.Thread(target=process_upload, args=(uid, path, topic), daemon=True).start()
     return {"id": uid, "status": "processing"}
 
-def process_upload(uid, path):
+def process_upload(uid, path, topic=''):
     samples = []
     try:
         result = run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path)], 20)
@@ -128,10 +131,12 @@ def process_upload(uid, path):
             if r.returncode == 0 and sample.exists():
                 samples.append(sample)
                 score, reason, transcript = score_segment(sample)
+                if topic:
+                    score, reason = topic_rank(score, reason, transcript, topic)
                 windows.append((score, start, sample, reason, transcript))
         selected = choose_nonoverlapping(windows, int(os.getenv("MAX_CLIPS_PER_UPLOAD", "3")), 25)
         for score, start, sample, reason, transcript in selected:
-            if score < int(os.getenv("UPLOAD_HIGHLIGHT_THRESHOLD", "20")):
+            if score < (15 if topic else int(os.getenv("UPLOAD_HIGHLIGHT_THRESHOLD", "20"))):
                 continue
             cid = uuid.uuid4().hex[:12]
             dest = folder / (cid + ".mp4")
@@ -151,6 +156,7 @@ def process_upload(uid, path):
 
 class VideoURLInput(BaseModel):
     url: str = Field(min_length=12, max_length=2000)
+    topic: str = Field(default='', max_length=160)
 
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -170,15 +176,17 @@ def allowed_video_url(url):
 @app.post("/api/video-url")
 def submit_video_url(item: VideoURLInput, _: None = Depends(auth)):
     suffix = allowed_video_url(item.url)
+    if item.topic.strip() and not (os.getenv('ENABLE_TRANSCRIPTION') == '1' and whisper_available()):
+        raise HTTPException(503, 'Topic-based clipping requires ENABLE_TRANSCRIPTION=1 and faster-whisper installed on the server')
     with db() as c:
         if c.execute("SELECT count(*) FROM uploads WHERE status='processing'").fetchone()[0] >= 1:
             raise HTTPException(409, "Processing capacity reached")
         uid = uuid.uuid4().hex[:12]
         c.execute("INSERT INTO uploads VALUES(?,?,?,?,?)", (uid, urlparse(item.url).hostname[:120], "processing", time.time(), ""))
-    threading.Thread(target=download_and_process, args=(uid, item.url, suffix), daemon=True).start()
+    threading.Thread(target=download_and_process, args=(uid, item.url, suffix, item.topic.strip()), daemon=True).start()
     return {"id": uid, "status": "processing"}
 
-def download_and_process(uid, url, suffix):
+def download_and_process(uid, url, suffix, topic=''):
     folder = DATA / "uploads"
     folder.mkdir(exist_ok=True)
     path = folder / (uid + suffix)
@@ -206,7 +214,7 @@ def download_and_process(uid, url, suffix):
         probe = run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_type", "-of", "default=noprint_wrappers=1", str(path)], 20)
         if probe.returncode != 0 or "video" not in probe.stdout:
             raise ValueError("URL did not return a playable video")
-        process_upload(uid, path)
+        process_upload(uid, path, topic)
     except Exception as exc:
         path.unlink(missing_ok=True)
         with db() as c:
@@ -278,6 +286,17 @@ def transcribe(path):
         return " ".join(s.text.strip() for s in segments)[:3000]
     except Exception:
         return ""
+
+def topic_rank(base_score, reason, transcript, topic):
+    """Transparent lexical relevance ranking, not semantic understanding."""
+    terms = set(re.findall(r"[a-z0-9]{3,}", topic.lower()))
+    words = set(re.findall(r"[a-z0-9]{3,}", (transcript or "").lower()))
+    if not terms:
+        return 0, "Topic has no searchable keywords"
+    overlap = terms & words
+    relevance = round(100 * len(overlap) / len(terms))
+    score = min(100, round(relevance * .85 + base_score * .15)) if overlap else 0
+    return score, "Topic match: " + (", ".join(sorted(overlap)) if overlap else "none") + "; " + reason
 
 def score_segment(path):
     try:
