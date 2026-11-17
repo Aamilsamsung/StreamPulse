@@ -151,3 +151,15 @@ The clip exporter now supports `EDIT_PRESET=clean` (letterbox), `EDIT_PRESET=dyn
 Set `BURN_SUBTITLES=1` to opt into word-timed captions. Install `faster-whisper`, use an FFmpeg build with the `ass` filter/libass, and allow the Whisper model to download. **This feature has not yet been verified with a real video in CI**. The `blur` preset cannot currently be combined with burned subtitles. Subtitle generation fails explicitly when speech or dependencies are unavailable.
 
 `backend/highlights.py` contains an explainable audio/transcript scoring function and candidate overlap reduction. These are heuristics, not a trained AI ranking model.
+
+## Real-video integration test
+
+A separate GitHub Actions workflow (`.github/workflows/video-integration.yml`) now creates a **synthetic test video** with FFmpeg and attempts to render all three editing presets into 1080×1920 MP4 files. This is a real media export test, not just a Python import check. It does **not** test live streaming, Whisper caption rendering, platform publishing, public traffic or gameplay-specific highlight quality.
+
+Run locally with FFmpeg installed:
+
+```bash
+python -m unittest discover -s tests -p 'test_video_integration.py' -v
+```
+
+The CI workflow must report success before treating the tested preset exports as verified. The synthetic clip contains no third-party copyrighted footage.
