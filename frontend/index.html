@@ -54,37 +54,233 @@ label{font-size:12px;color:#d2ced5;margin-top:17px}
 <header><div class="brand"><span>▶</span>StreamPulse <span style="background:none;color:#8f858b;font-size:12px;font-weight:500;width:auto;margin-left:5px">STUDIO</span></div><div class="right"><span class="dot"></span><span id="connection">Checking server</span><button class="btn tiny" id="connectBtn" type="button">Connect</button><span style="border:1px solid #393036;padding:5px 9px;border-radius:7px">BETA</span></div></header>
 <div class="shell">
 <aside class="sidebar"><div class="eyebrow hide-mobile" style="padding:0 11px;margin-bottom:12px">Workspace</div><nav class="navs"><button class="navitem active" data-jump="source"><span class="ico">◈</span>Create clips</button><button class="navitem" data-jump="queue"><span class="ico">◷</span>Activity</button><button class="navitem" data-jump="library"><span class="ico">▦</span>My clips</button></nav><hr class="separator hide-mobile"><div class="hide-mobile"><div class="eyebrow" style="padding:0 11px">Processing</div><div class="navitem"><span class="ico">◷</span>Highlight detection</div><div class="navitem"><span class="ico">▦</span>Vertical export</div><div class="navitem"><span class="ico">↧</span>MP4 download</div><div class="panel"><div class="row"><strong style="font-size:12px">Workspace status</strong><span class="status">BETA</span></div><p class="hint">Single-admin prototype. Processing is based on audio cues, not full gameplay understanding.</p></div></div></aside>
-<main class="main"><div class="row"><div><div class="eyebrow">CREATOR WORKSPACE / CLIP STUDIO</div><div class="title">Turn long videos into great moments.</div><div class="muted small">Paste a link, describe the moment, and get clips ready to share.</div></div><span class="status">● EDITOR</span></div>
-<div class="panel preview-panel" style="padding:9px;margin-top:20px"><div class="preview" id="preview"><div class="empty" id="emptyPreview"><div class="play">▶</div><h2 style="margin:0 0 5px;font-size:20px">Your footage goes here</h2><div class="muted small">Select a local video to preview it, then generate highlight candidates below.</div></div><video id="player" controls playsinline hidden></video><div class="overlay">● SOURCE PREVIEW</div></div><div class="controls"><button class="btn" id="playBtn">▶ Play / Pause</button><button class="btn" id="clearBtn">↺ Clear preview</button></div></div>
-<div class="panel" id="source"><div class="row"><h3 style="margin:0">01 / Choose your source</h3><span class="pill">UPLOAD · URL · LIVE</span></div><div class="tabs"><button class="tab active" data-mode="upload">↑ Upload video</button><button class="tab" data-mode="url">↗ Video URL</button><button class="tab" data-mode="live">● Livestream</button></div>
-<div class="panel ai-panel"><div class="row"><h3 style="margin:0">✦ AI Topic Finder</h3><span class="pill">TRANSCRIPT SEARCH</span></div><p class="hint">Describe what you want to find in your video. When server transcription is enabled, clips are ranked by matching spoken keywords. This does not yet understand visuals or search the internet.</p><label for="topic">What should the clip be about?</label><input class="field" id="topic" maxlength="160" placeholder="e.g. clutch ace, best comeback, explanation of pricing"><p class="hint">Leave blank for normal audio-based highlights. Topic mode requires speech transcription on the server.</p></div><div id="uploadMode"><label for="file">Choose your recording</label><input class="file" type="file" id="file" accept=".mp4,.mov,.mkv,.webm,video/*"><p class="hint">MP4, MOV, MKV or WebM. Server upload limit applies.</p><button class="btn primary full" id="upload">✦ Generate highlights</button></div>
-<div id="urlMode" hidden><label for="videoUrl">YouTube or direct video URL</label><input class="field" id="videoUrl" type="url" placeholder="https://youtu.be/Wje3zkc7syE"><p class="hint">Accepts public YouTube watch, Shorts, and youtu.be links, plus direct video files from approved HTTPS hosts. YouTube access may be restricted; only use videos you have rights to edit.</p><button class="btn primary full" id="videoUrlBtn">✦ Clip from URL</button></div>
+<main class="main"><div class="row"><div><div class="eyebrow">CREATOR WORKSPACE / CLIP STUDIO</div><div class="title">Turn long videos into great moments.</div><div class="muted small">Upload a recording, choose a clip length, then preview and download the results.</div></div><span class="status">● EDITOR</span></div>
+<div class="panel preview-panel" style="padding:9px;margin-top:20px"><div class="preview" id="preview"><div class="empty" id="emptyPreview"><div class="play">▶</div><h2 style="margin:0 0 5px;font-size:20px">Your footage goes here</h2><div class="muted small">Select a local video to preview it, then generate highlight candidates below.</div></div><video id="player" controls playsinline hidden></video><div class="overlay">PREVIEW</div></div><div class="controls"><button class="btn" id="playBtn" disabled>▶ Play / Pause</button><button class="btn" id="clearBtn" disabled>↺ Clear preview</button></div></div>
+<div class="panel" id="source"><div class="row"><h3 style="margin:0">Video source</h3><span class="pill">UPLOAD · URL · LIVE</span></div><div class="tabs"><button class="tab active" data-mode="upload">↑ Upload video</button><button class="tab" data-mode="url">↗ Video URL</button><button class="tab" data-mode="live">● Livestream</button></div>
+<div id="clipSettings">
+<div class="controls">
+<div><label for="numberOfClips">Maximum clips</label><input class="field" id="numberOfClips" type="number" min="1" max="10" value="3" required></div>
+<div><label for="clipSeconds">Seconds per clip</label><input class="field" id="clipSeconds" type="number" min="5" max="120" value="30" required></div>
+<div><label for="layout">Vertical framing</label><select class="field" id="layout"><option value="clean">Fit entire frame</option><option value="dynamic">Center crop</option><option value="blur">Blur background</option></select></div>
+<div><label for="captionStyle">Spoken captions</label><select class="field" id="captionStyle"><option value="plain">White, word by word</option><option value="accent">Yellow pop animation</option><option value="off">Off</option></select></div>
+</div>
+<label for="topic">Spoken keywords (optional)</label><input class="field" id="topic" maxlength="160" placeholder="e.g. clutch, comeback, pricing">
+<p class="hint">Captions use Faster-Whisper. The first run may download a speech model.</p>
+</div><div id="uploadMode"><label for="file">Choose your recording</label><input class="file" type="file" id="file" accept=".mp4,.mov,.mkv,.webm,video/*"><p class="hint">MP4, MOV, MKV or WebM. Server upload limit applies.</p><button class="btn primary full" id="upload">✦ Generate highlights</button></div>
+<div id="urlMode" hidden><label for="videoUrl">YouTube or direct video URL</label><input class="field" id="videoUrl" type="url" placeholder="https://youtu.be/Wje3zkc7syE"><p class="hint">Accepts public YouTube watch, Shorts, and youtu.be links, plus direct video files from approved HTTPS hosts. YouTube access may be restricted. For Instagram, upload a file you have permission to edit.</p><button class="btn primary full" id="videoUrlBtn">✦ Clip from URL</button></div>
 <div id="liveMode" hidden><label for="name">Stream name</label><input class="field" id="name" placeholder="Gaming session"><label for="url">Authorized HLS stream URL</label><input class="field" id="url" type="url" placeholder="https://approved-host.example/live.m3u8"><p class="hint">Only allowlisted HTTPS HLS streams are supported.</p><button class="btn primary full" id="watch">● Start live monitoring</button></div></div>
-<div class="panel" id="queue"><div class="row"><h3 style="margin:0">02 / Processing activity</h3><button class="btn tiny" id="refresh">↻ Refresh</button></div><div class="jobs" id="jobs"><p class="hint">No jobs loaded.</p></div></div>
-<div class="note" id="msg" role="status" aria-live="polite">Ready to create clips. Use Connect in the header to access your workspace.</div></main>
+<div class="panel" id="queue"><div class="row"><h3 style="margin:0">Processing activity</h3><button class="btn tiny" id="refresh">↻ Refresh</button></div><div class="jobs" id="jobs"><p class="hint">No jobs loaded.</p></div></div>
+<div class="note" id="msg" role="status" tabindex="-1" aria-live="polite">Ready to create clips. Use Connect in the header to access your workspace.</div></main>
 <aside class="inspector"><div class="panel" id="library"><div class="row"><h3 style="margin:0">Your clips</h3><span class="pill">REVIEW</span></div><div id="clips"><p class="hint">No clips loaded.</p></div></div><div class="panel"><h3>Live sessions</h3><div id="streams"><p class="hint">No streams loaded.</p></div></div><div class="twostat"><div class="stat"><strong id="clipCount">—</strong><small>Clips</small></div><div class="stat"><strong id="jobCount">—</strong><small>Jobs</small></div></div><p class="footer">StreamPulse AI · Early beta<br>Actual processing results appear here when the server finishes.</p></aside></div>
 <script>
-const $=id=>document.getElementById(id);const base='/api';let previewURL=null;
-const message=s=>{$('msg').textContent=s};const el=(tag,txt)=>{const n=document.createElement(tag);if(txt!==undefined)n.textContent=String(txt);return n};
-let adminKey='';function headers(){return {'X-Admin-Key':adminKey}}
-async function request(path,opts={}){if(!adminKey)throw Error('Use Connect in the header first');const r=await fetch(base+path,{...opts,headers:{...headers(),...(opts.headers||{})}});if(!r.ok){let t=await r.text();throw Error(r.status+' '+t.slice(0,170))}return r}
-function showMode(mode){for(const name of ['upload','url','live'])$(name+'Mode').hidden=name!==mode;document.querySelectorAll('[data-mode]').forEach(x=>x.classList.toggle('active',x.dataset.mode===mode))}
-document.querySelectorAll('[data-mode]').forEach(x=>x.onclick=()=>showMode(x.dataset.mode));document.querySelectorAll('[data-jump]').forEach(x=>x.onclick=()=>{document.querySelectorAll('[data-jump]').forEach(b=>b.classList.toggle('active',b===x));$(x.dataset.jump).scrollIntoView({behavior:'smooth',block:'start'})});
-$('file').onchange=()=>{const f=$('file').files[0];if(previewURL)URL.revokeObjectURL(previewURL);if(f){previewURL=URL.createObjectURL(f);$('player').src=previewURL;$('player').hidden=false;$('emptyPreview').hidden=true}};
-$('playBtn').onclick=()=>{const p=$('player');if(!p.src)return message('Select a video to preview first');p.paused?p.play():p.pause()};
-$('clearBtn').onclick=()=>{const p=$('player');p.pause();p.removeAttribute('src');p.load();p.hidden=true;$('emptyPreview').hidden=false;if(previewURL)URL.revokeObjectURL(previewURL);previewURL=null};
-async function upload(){const f=$('file').files[0];if(!f)return message('Choose a video first');const data=new FormData();data.append('file',f);data.append('topic',$('topic').value.trim());try{const r=await request('/uploads',{method:'POST',body:data});message('Upload queued: '+(await r.json()).id);refresh()}catch(e){message(e.message)}}
-async function clipURL(){try{const r=await request('/video-url',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:$('videoUrl').value,topic:$('topic').value.trim()})});message('Video URL queued: '+(await r.json()).id);refresh()}catch(e){message(e.message)}}
-async function watch(){try{const r=await request('/streams',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('name').value,url:$('url').value})});message('Live monitor started: '+(await r.json()).id);refresh()}catch(e){message(e.message)}}
-async function stopStream(id){try{await request('/streams/'+encodeURIComponent(id)+'/stop',{method:'POST'});message('Stop requested');refresh()}catch(e){message(e.message)}}
-async function approveClip(id){try{await request('/clips/'+encodeURIComponent(id)+'/approve',{method:'POST'});message('Approved for review. Publishing is not implemented.');refresh()}catch(e){message(e.message)}}
-async function downloadClip(id){try{const r=await request('/clips/'+encodeURIComponent(id)+'/video');const url=URL.createObjectURL(await r.blob());const a=el('a');a.href=url;a.download=id+'.mp4';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000)}catch(e){message(e.message)}}
-async function refresh(){try{const [uploads,streams,clips]=await Promise.all(['/uploads','/streams','/clips'].map(x=>request(x).then(r=>r.json())));$('jobCount').textContent=uploads.length;$('clipCount').textContent=clips.length;
-$('jobs').replaceChildren(...(uploads.length?uploads.map(x=>{const d=el('div');d.className='job';d.append(el('strong',x.name),el('div',x.status+(x.error?' — '+x.error:'')));return d}):[el('p','No uploads yet.')]));
-$('streams').replaceChildren(...(streams.length?streams.map(x=>{const d=el('div');d.className='clip';d.append(el('strong',x.name),el('p',x.status));if(x.status==='running'){const b=el('button','Stop monitoring');b.className='btn tiny';b.onclick=()=>stopStream(x.id);d.append(b)}return d}):[el('p','No live sessions yet.')]));
-$('clips').replaceChildren(...(clips.length?clips.map(x=>{const d=el('div');d.className='clip';d.append(el('strong','Highlight '+x.id),el('p','Score '+x.score+'/100 · '+x.status+' · '+x.reason));if(x.transcript)d.append(el('p',x.transcript));const b=el('button','↓ MP4');b.className='btn tiny primary';b.onclick=()=>downloadClip(x.id);d.append(b);const a=el('button','Approve');a.className='btn tiny';a.style.marginLeft='6px';a.onclick=()=>approveClip(x.id);d.append(a);return d}):[el('p','No clips yet.')]));
-message('Synced at '+new Date().toLocaleTimeString())}catch(e){message('Unable to load workspace: '+e.message)}}
-$('connectBtn').onclick=()=>{const value=window.prompt('Enter your private StreamPulse admin key:');if(value===null)return;adminKey=value.trim();$('connectBtn').textContent=adminKey?'Connected':'Connect';if(adminKey)refresh()};$('upload').onclick=upload;$('videoUrlBtn').onclick=clipURL;$('watch').onclick=watch;$('refresh').onclick=refresh;
-(async()=>{try{const r=await fetch('/api/health');const h=await r.json();$('connection').textContent=h.ok?'Server online':'Server unavailable'}catch{$('connection').textContent='Server unavailable'}})();
-if(location.hostname.endsWith('.vercel.app')){message('Vercel preview only. Use the Render service for processing.');['upload','videoUrlBtn','watch'].forEach(id=>$(id).disabled=true)}
+const $ = id => document.getElementById(id);
+let previewURL, adminKey = '', busy = false, refreshing = false;
+const message = text => { $('msg').textContent = text; };
+const el = (tag, text) => {
+  const node = document.createElement(tag);
+  if (text !== undefined) node.textContent = text;
+  return node;
+};
+
+async function request(path, options = {}, key = adminKey) {
+  if (!key) throw Error('Use Connect in the header first.');
+  const response = await fetch('/api' + path, {
+    ...options, headers: {'X-Admin-Key': key, ...options.headers}
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    const detail = Array.isArray(body.detail) ? body.detail.map(item => item.msg).join('. ') : body.detail;
+    throw Error(detail || 'Server request failed (' + response.status + ').');
+  }
+  return response;
+}
+
+document.querySelectorAll('[data-mode]').forEach(button => {
+  button.onclick = () => {
+    const mode = button.dataset.mode;
+    for (const name of ['upload', 'url', 'live']) $(name + 'Mode').hidden = name !== mode;
+    $('clipSettings').hidden = mode === 'live';
+    document.querySelectorAll('[data-mode]').forEach(tab => tab.classList.toggle('active', tab === button));
+  };
+});
+document.querySelectorAll('[data-jump]').forEach(button => {
+  button.onclick = () => {
+    document.querySelectorAll('[data-jump]').forEach(tab => tab.classList.toggle('active', tab === button));
+    $(button.dataset.jump).scrollIntoView({behavior: 'smooth', block: 'start'});
+  };
+});
+
+function setPreview(blob) {
+  const player = $('player');
+  player.pause();
+  if (previewURL) URL.revokeObjectURL(previewURL);
+  previewURL = blob ? URL.createObjectURL(blob) : null;
+  if (previewURL) player.src = previewURL;
+  else player.removeAttribute('src');
+  player.load();
+  player.hidden = !previewURL;
+  $('emptyPreview').hidden = !!previewURL;
+  $('playBtn').disabled = $('clearBtn').disabled = !previewURL;
+}
+
+$('file').onchange = () => setPreview($('file').files[0]);
+$('playBtn').onclick = async () => {
+  const player = $('player');
+  if (!player.paused) return player.pause();
+  try { await player.play(); }
+  catch { message('This preview could not play. You can still submit the source file for MP4 conversion.'); }
+};
+$('clearBtn').onclick = () => setPreview(null);
+
+function clipSettings() {
+  if (!$('numberOfClips').reportValidity() || !$('clipSeconds').reportValidity()) {
+    throw Error('Choose 1–10 clips and a duration of 5–120 seconds.');
+  }
+  return {
+    topic: $('topic').value.trim(),
+    clip_count: $('numberOfClips').valueAsNumber,
+    clip_seconds: $('clipSeconds').valueAsNumber,
+    preset: $('layout').value,
+    captions: $('captionStyle').value !== 'off',
+    accent_captions: $('captionStyle').value === 'accent'
+  };
+}
+
+async function submit(button, pending, action) {
+  if (busy) return;
+  busy = true;
+  button.disabled = true;
+  message(pending);
+  try {
+    await action();
+    message('Submitted. Follow the progress in Processing activity.');
+    await refresh();
+  } catch (error) {
+    message(error.message + ' You can retry using the same controls.');
+    $('msg').focus();
+  } finally {
+    busy = false;
+    button.disabled = false;
+  }
+}
+
+$('upload').onclick = () => submit($('upload'), 'Uploading video…', async () => {
+  const file = $('file').files[0];
+  if (!file) throw Error('Choose a video first.');
+  const data = new FormData();
+  data.append('file', file);
+  for (const [key, value] of Object.entries(clipSettings())) data.append(key, value);
+  await request('/uploads', {method: 'POST', body: data});
+});
+const jsonPost = body => ({method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+$('videoUrlBtn').onclick = () => submit($('videoUrlBtn'), 'Submitting video link…', async () => {
+  const url = $('videoUrl').value.trim();
+  if (!url) throw Error('Enter a video URL.');
+  await request('/video-url', jsonPost({url, ...clipSettings()}));
+});
+$('watch').onclick = () => submit($('watch'), 'Starting live monitor…', () =>
+  request('/streams', jsonPost({name: $('name').value.trim(), url: $('url').value.trim()}))
+);
+
+async function clipAction(id, preview) {
+  try {
+    message(preview ? 'Loading clip preview…' : 'Downloading clip…');
+    const response = await request('/clips/' + encodeURIComponent(id) + '/video');
+    const blob = await response.blob();
+    if (preview) {
+      setPreview(blob);
+      $('preview').scrollIntoView({block: 'center'});
+      message('Clip ready to preview.');
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const link = el('a');
+    link.href = url;
+    link.download = 'streampulse-' + id + '.mp4';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    message('Clip downloaded.');
+  } catch (error) { message(error.message); }
+}
+
+function action(label, handler) {
+  const button = el('button', label);
+  button.className = 'btn tiny';
+  button.onclick = handler;
+  return button;
+}
+
+const previous = {};
+function showList(id, items, empty, draw) {
+  const signature = JSON.stringify(items);
+  if (signature === previous[id]) return;
+  previous[id] = signature;
+  $(id).replaceChildren(...(items.length ? items.map(draw) : [el('p', empty)]));
+}
+
+async function refresh() {
+  if (refreshing || !adminKey) return;
+  refreshing = true;
+  try {
+    const [uploads, streams, clips] = await Promise.all(
+      ['/uploads', '/streams', '/clips'].map(path => request(path).then(response => response.json()))
+    );
+    $('jobCount').textContent = uploads.length;
+    $('clipCount').textContent = clips.length;
+    showList('jobs', uploads, 'No uploads yet.', job => {
+      const card = el('div');
+      card.className = 'job';
+      card.append(el('strong', job.name), el('div', job.error || job.stage || job.status));
+      if (job.warning) card.append(el('div', job.warning));
+      if (['failed', 'interrupted'].includes(job.status)) {
+        card.append(action('Back to source to retry', () => $('source').scrollIntoView({block: 'start'})));
+      }
+      return card;
+    });
+    showList('streams', streams, 'No live sessions yet.', stream => {
+      const card = el('div');
+      card.className = 'clip';
+      card.append(el('strong', stream.name), el('p', stream.error || stream.status));
+      if (stream.status === 'running') card.append(action('Stop monitoring', async () => {
+        try { await request('/streams/' + encodeURIComponent(stream.id) + '/stop', {method: 'POST'}); refresh(); }
+        catch (error) { message(error.message); }
+      }));
+      return card;
+    });
+    showList('clips', clips, 'No clips yet.', clip => {
+      const card = el('div');
+      card.className = 'clip';
+      const job = uploads.find(upload => upload.id === clip.stream_id);
+      card.append(el('strong', job?.name || 'Live highlight'), el('p', clip.reason));
+      if (clip.transcript) card.append(el('p', clip.transcript));
+      const buttons = el('div');
+      buttons.className = 'controls';
+      buttons.append(action('Preview', () => clipAction(clip.id, true)),
+                     action('Download MP4', () => clipAction(clip.id, false)));
+      card.append(buttons);
+      return card;
+    });
+  } catch (error) { message('Unable to load workspace. ' + error.message); }
+  finally { refreshing = false; }
+}
+
+$('connectBtn').onclick = async () => {
+  const value = window.prompt('Enter your private StreamPulse admin key:');
+  if (!value?.trim()) return;
+  try {
+    await request('/uploads', {}, value.trim());
+    adminKey = value.trim();
+    $('connectBtn').textContent = 'Connected';
+    message('Workspace connected.');
+    refresh();
+  } catch (error) { message(error.message); }
+};
+$('refresh').onclick = refresh;
+setInterval(refresh, 2500);
+fetch('/api/health').then(response => response.json()).then(health => {
+  $('connection').textContent = health.ok && health.ffmpeg ? 'Server online' : 'Video processor unavailable';
+  if (health.workspace_ready === false) message('Set ADMIN_KEY on the server, then reload this page.');
+}).catch(() => { $('connection').textContent = 'Server unavailable'; });
 </script></body></html>

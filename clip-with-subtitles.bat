@@ -26,7 +26,7 @@ if not exist ".venv\Scripts\python.exe" (
   exit /b 1
  )
 )
-".venv\Scripts\python.exe" -m pip install -r requirements.txt faster-whisper
+".venv\Scripts\python.exe" -m pip install -r requirements-ai.txt
 if errorlevel 1 (
  echo Dependency installation failed.
  pause

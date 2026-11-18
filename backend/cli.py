@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from backend.editor import render
+from backend.editor import render, whisper_model
 from backend.highlights import rank_candidate, choose_nonoverlapping
 
 def cmd(args, timeout=180):
@@ -36,10 +36,6 @@ def audio_loudness(path):
     return float(match.group(1)) if match else -90.0
 
 def speech_text(path, model):
-    try:
-        from faster_whisper import WhisperModel
-    except ImportError:
-        return ""
     segments, _ = model.transcribe(str(path), beam_size=1, vad_filter=True)
     return " ".join(s.text.strip() for s in segments)[:3000]
 
@@ -58,16 +54,15 @@ def clip_video(source, output, preset="dynamic", count=3, window=30,
     model = None
     if transcribe:
         try:
-            from faster_whisper import WhisperModel
+            model = whisper_model(model_name)
         except ImportError as exc:
             raise RuntimeError("Install faster-whisper for AI speech scoring") from exc
-        model = WhisperModel(model_name, device="cpu", compute_type="int8")
     candidates = []
     with tempfile.TemporaryDirectory(prefix="streampulse-") as temp:
         tempdir = Path(temp)
         for start in range(0, math.ceil(length), window):
             clip_length = min(window, length - start)
-            if clip_length < 8:
+            if start and clip_length < window * 0.5:
                 continue
             segment = tempdir / f"candidate_{start:06d}.mp4"
             cmd(["ffmpeg", "-y", "-v", "error", "-ss", str(start), "-i", str(source),
@@ -78,7 +73,7 @@ def clip_video(source, output, preset="dynamic", count=3, window=30,
             score, reason = rank_candidate(loudness, transcript)
             candidates.append((score, start, segment, reason, transcript))
             print(f"Analyzed {start:>5}s | score {score:>3} | {reason}", flush=True)
-        selected = choose_nonoverlapping(candidates, count, min_gap=max(10, window-5))
+        selected = choose_nonoverlapping(candidates, count, min_gap=window)
         results = []
         for index, (score, start, segment, reason, transcript) in enumerate(selected, 1):
             dest = output / f"highlight_{index:02d}_{start:05d}s.mp4"
