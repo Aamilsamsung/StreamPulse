@@ -372,7 +372,12 @@ def download_youtube_and_process(uid, video_id, topic="", settings=None):
                 raise ValueError("YouTube did not provide a compatible video. Upload an authorized copy")
             if path.stat().st_size > limit:
                 raise ValueError("YouTube video exceeds the server file limit")
-            process_upload(uid, path, topic, settings, probe_upload(path))
+            try:
+                duration = probe_upload(path)
+            except ValueError as exc:
+                logger.warning("YouTube returned an unreadable file for %s: %s", video_id, exc)
+                raise ValueError("YouTube returned an unreadable response instead of a video. Upload an authorized copy") from exc
+            process_upload(uid, path, topic, settings, duration)
     except subprocess.TimeoutExpired:
         update_upload(uid, status="failed", error="YouTube import timed out. Upload an authorized copy or try again")
     except Exception as exc:
