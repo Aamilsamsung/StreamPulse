@@ -4,6 +4,7 @@ on:
     paths:
       - "backend/**"
       - "tests/**"
+      - "requirements*.txt"
       - ".github/workflows/video-integration.yml"
   workflow_dispatch:
 
@@ -20,5 +21,10 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y ffmpeg
-      - name: Run actual video renders
-        run: python -m unittest discover -s tests -p 'test_video_integration.py' -v
+      - name: Install application and transcription dependencies
+        run: pip install -r requirements-dev.txt -r requirements-ai.txt
+      - name: Run uploads, transcription and video exports
+        env:
+          HF_HUB_DISABLE_XET: '1'
+          TEST_WHISPER: '1'
+        run: python -m unittest discover -s tests -v

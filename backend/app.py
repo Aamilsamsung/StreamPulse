@@ -3,6 +3,7 @@ import math
 import os
 import re
 import time
+from tempfile import TemporaryDirectory
 import uuid
 import sqlite3
 import subprocess
@@ -20,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from backend.highlights import rank_candidate, choose_nonoverlapping
-from backend.editor import render, PRESETS, transcribe_words, whisper_model
+from backend.editor import EVEN_DIMENSIONS, PRESETS, render, transcribe_words, whisper_model
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = Path(os.getenv("STREAMPULSE_DATA_DIR", str(ROOT / "data"))).resolve()
@@ -249,11 +250,12 @@ def process_upload(uid, path, topic="", settings=None, duration=None):
             samples.append(sample)
             result = run(["ffmpeg", "-y", "-v", "error", "-nostdin", "-threads", "2",
                           "-ss", str(start), *LOCAL_INPUT, "-i", str(path), "-t", str(length),
-                          "-map", "0:v:0", "-map", "0:a:0?", "-c:v", "libx264", "-threads", "2",
+                          "-map", "0:v:0", "-map", "0:a:0?", "-vf", EVEN_DIMENSIONS,
+                          "-c:v", "libx264", "-threads", "2",
                           "-pix_fmt", "yuv420p", "-preset", "ultrafast", "-crf", "21",
                           "-c:a", "aac", str(sample)], 150)
             if result.returncode:
-                raise RuntimeError(f"Could not extract clip {index} from the video")
+                raise RuntimeError(f"Could not extract clip {index}: {result.stderr[-500:]}")
             cid = uuid.uuid4().hex[:12]
             dest = folder / (cid + ".mp4")
             outputs.append(dest)
@@ -306,9 +308,9 @@ def has_audio(path):
 
 def segment_loudness(path, start, length):
     try:
-        result = run(["ffmpeg", "-hide_banner", "-nostdin", "-ss", str(start), *LOCAL_INPUT,
-                      "-i", str(path), "-t", str(length), "-map", "0:a:0",
-                      "-af", "volumedetect", "-vn", "-f", "null", "-"], 60)
+        result = run(["ffmpeg", "-hide_banner", "-nostdin", "-ss", str(start), "-t", str(length),
+                      *LOCAL_INPUT, "-i", str(path), "-map", "0:a:0",
+                      "-af", f"atrim=duration={length},volumedetect", "-vn", "-f", "null", "-"], 60)
         match = re.search(r"max_volume:\s*(-?[\d.]+) dB", result.stderr)
         return float(match.group(1)) if match else -90
     except subprocess.TimeoutExpired:
@@ -341,56 +343,42 @@ def youtube_video_id(url):
 def download_youtube_and_process(uid, video_id, topic="", settings=None):
     folder = DATA / "uploads"
     folder.mkdir(exist_ok=True)
-    path = folder / (uid + ".mp4")
     limit = int(os.getenv("MAX_UPLOAD_MB", "500")) * 1024 * 1024
     duration_limit = int(os.getenv("MAX_VIDEO_SECONDS", "3600"))
     try:
         update_upload(uid, "Importing YouTube video")
-        if not shutil.which("yt-dlp"):
-            raise RuntimeError("YouTube importer is unavailable on this server")
-        # The URL is reconstructed from a validated 11-character video ID.
-        cmd = ["yt-dlp", "--no-playlist", "--no-config", "--no-cache-dir",
-               "--js-runtimes", "node", "--socket-timeout", "25", "--retries", "3", "--fragment-retries", "3",
-               "--max-filesize", str(limit), "--match-filter", f"duration <= {duration_limit}",
-               "--format", "b[ext=mp4][height<=480]/bv*[height<=480]+ba/b[height<=480]/best",
-               "--merge-output-format", "mp4", "--remux-video", "mp4",
-               "--output", str(path), "https://www.youtube.com/watch?v=" + video_id]
-        attempts = [
-            cmd,
-            cmd[:-1] + ["--extractor-args", "youtube:player_client=android,web", cmd[-1]],
-            cmd[:-1] + ["--extractor-args", "youtube:player_client=web_safari,web", cmd[-1]],
-        ]
-        result = None
-        for attempt in attempts:
-            path.unlink(missing_ok=True)
-            result = subprocess.run(attempt, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                    text=True, timeout=240)
-            logger.warning('YouTube import attempt result: %s', (result.stderr or '')[-1200:])
-            if result.returncode == 0 and path.exists() and path.stat().st_size > 0:
-                break
-            detail = (result.stderr or "") + (result.stdout or "")
-            if "does not pass filter" in detail or "Sign in to confirm" in detail:
-                break
-        if result is None or result.returncode != 0 or not path.exists():
-            detail = ((result.stderr or "") + "\n" + (result.stdout or "")).strip() if result else ""
-            lines = [line.strip() for line in detail.splitlines() if line.strip()]
-            last = next((line for line in reversed(lines) if "ERROR:" in line or "does not pass filter" in line), lines[-1] if lines else "No downloader details")
-            if "does not pass filter" in detail:
-                raise ValueError(f"Video exceeds the {duration_limit // 60}-minute processing limit")
-            if "Sign in to confirm" in detail or "bot" in last.lower():
-                raise ValueError("YouTube requires verification or blocks this server. Upload a video file you are authorized to edit.")
-            if "Failed to extract any player response" in detail:
-                raise ValueError("YouTube player extraction failed across multiple clients. This server cannot currently import the video; upload the file instead.")
-            if "Requested format is not available" in detail:
-                raise ValueError("No compatible video format was offered by YouTube")
-            raise ValueError("YouTube importer: " + last[:180])
-        if path.stat().st_size > limit:
-            raise ValueError("YouTube video exceeds the server file limit")
-        process_upload(uid, path, topic, settings, probe_upload(path))
+        with TemporaryDirectory(dir=folder, prefix=uid + "_") as temporary:
+            path = Path(temporary) / "input.mp4"
+            # The URL is reconstructed from a validated video ID.
+            command = [
+                "yt-dlp", "--no-playlist", "--no-config", "--no-cache-dir",
+                "--js-runtimes", "node", "--socket-timeout", "12",
+                "--retries", "1", "--extractor-retries", "1", "--fragment-retries", "1",
+                "--max-filesize", str(limit), "--match-filter", f"!is_live & duration <= {duration_limit}",
+                "--format", "b[ext=mp4][height<=480]/bv*[height<=480]+ba/b[height<=480]/best",
+                "--merge-output-format", "mp4", "--remux-video", "mp4",
+                "--output", str(path), "https://www.youtube.com/watch?v=" + video_id,
+            ]
+            result = run(command, timeout=180)
+            if result.returncode or not path.is_file() or not path.stat().st_size:
+                detail = result.stderr + "\n" + result.stdout
+                logger.warning("YouTube import failed: %s", detail[-1200:])
+                if "does not pass filter" in detail:
+                    raise ValueError(f"Choose a finished recording no longer than {duration_limit} seconds, or upload a file")
+                if any(term in detail.lower() for term in ("sign in", "private video", "not a bot", "members-only")):
+                    raise ValueError("YouTube restricted this import. Upload a copy you are authorized to edit")
+                if "timed out" in detail.lower():
+                    raise TimeoutError("YouTube did not respond in time. Upload an authorized copy or try again")
+                raise ValueError("YouTube did not provide a compatible video. Upload an authorized copy")
+            if path.stat().st_size > limit:
+                raise ValueError("YouTube video exceeds the server file limit")
+            process_upload(uid, path, topic, settings, probe_upload(path))
+    except subprocess.TimeoutExpired:
+        update_upload(uid, status="failed", error="YouTube import timed out. Upload an authorized copy or try again")
     except Exception as exc:
-        path.unlink(missing_ok=True)
-        with db() as c:
-            c.execute("UPDATE uploads SET status='failed',error=? WHERE id=?", (str(exc)[:250], uid))
+        update_upload(uid, status="failed", error=str(exc))
+
+
 
 def allowed_video_url(url):
     p = urlparse(url)

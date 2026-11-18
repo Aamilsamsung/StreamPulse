@@ -11,6 +11,7 @@ import subprocess
 from pathlib import Path
 
 PRESETS = ("clean", "dynamic", "blur")
+EVEN_DIMENSIONS = "scale=ceil(iw/2)*2:ceil(ih/2)*2"
 
 def _run(args, timeout=180):
     return subprocess.run(args, capture_output=True, text=True, timeout=timeout)

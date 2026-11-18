@@ -1,4 +1,5 @@
 """Exercise real media processing through the authenticated upload API."""
+import json
 import os
 import shutil
 import subprocess
@@ -104,6 +105,20 @@ class UploadTests(unittest.TestCase):
         for clip in clips:
             self.assertAlmostEqual(duration(self.download(clip)), 5, delta=0.2)
 
+    def test_odd_width_recording_exports_and_louder_window_wins(self):
+        source = self.folder / "odd.mov"
+        self.ffmpeg(
+            "-f", "lavfi", "-i", "color=size=321x180:duration=10:rate=12,format=yuv444p",
+            "-f", "lavfi", "-i", "sine=frequency=440:duration=10",
+            "-af", "volume=enable='lt(t,5)':volume=0.001",
+            "-c:v", "libx264", "-pix_fmt", "yuv444p", "-c:a", "aac", str(source),
+        )
+        self.assertEqual(probe_size(source), (321, 180))
+        _, clips = self.upload(source, clip_count=1, clip_seconds=5, captions="false")
+        self.assertEqual(len(clips), 1)
+        self.assertTrue(clips[0]["reason"].startswith("At 5s"), clips[0])
+        self.download(clips[0])
+
     @unittest.skipUnless(os.getenv("TEST_WHISPER") == "1", "Set TEST_WHISPER=1 for real transcription")
     def test_real_whisper_captions_are_burned_at_the_word_time(self):
         source = self.fixture("mp4", seconds=12, speech=True)
@@ -127,3 +142,10 @@ class UploadTests(unittest.TestCase):
         audio = subprocess.check_output(["ffprobe", "-v", "error", "-select_streams", "a:0",
                                          "-show_entries", "stream=sample_rate", "-of", "csv=p=0", str(output)])
         self.assertEqual(audio.strip(), b"48000")
+        loudness = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-i", str(output), "-af",
+             "loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json", "-vn", "-f", "null", "-"],
+            check=True, capture_output=True, text=True, timeout=30,
+        ).stderr
+        integrated = float(json.loads(loudness[loudness.rfind("{"):loudness.rfind("}") + 1])["input_i"])
+        self.assertAlmostEqual(integrated, -16, delta=2)

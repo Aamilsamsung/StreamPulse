@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from backend.editor import render, whisper_model
+from backend.editor import EVEN_DIMENSIONS, render, whisper_model
 from backend.highlights import rank_candidate, choose_nonoverlapping
 
 def cmd(args, timeout=180):
@@ -66,7 +66,8 @@ def clip_video(source, output, preset="dynamic", count=3, window=30,
                 continue
             segment = tempdir / f"candidate_{start:06d}.mp4"
             cmd(["ffmpeg", "-y", "-v", "error", "-ss", str(start), "-i", str(source),
-                 "-t", str(clip_length), "-c:v", "libx264", "-preset", "ultrafast",
+                 "-t", str(clip_length), "-vf", EVEN_DIMENSIONS, "-c:v", "libx264",
+                 "-pix_fmt", "yuv420p", "-preset", "ultrafast",
                  "-crf", "32", "-c:a", "aac", str(segment)], 180)
             loudness = audio_loudness(segment)
             transcript = speech_text(segment, model) if model else ""
